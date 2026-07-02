@@ -1,0 +1,78 @@
+#include <SPI.h>
+#include <MFRC522.h>
+#include <SoftwareSerial.h>
+#define SS_PIN 10
+#define RST_PIN 9
+String UID = "07 3C 17 07";
+const int RELAY_PIN = 7;
+MFRC522 rfid(SS_PIN, RST_PIN);
+SoftwareSerial BT(2, 3);
+
+String btBuffer = "";
+String unlockCode = "1234";
+
+void setup() {
+  Serial.begin(9600);
+  BT.begin(9600);
+
+  pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, LOW);
+
+  SPI.begin();
+  rfid.PCD_Init();
+}
+
+void loop() {
+  while (BT.available()) {
+    char c = BT.read();
+    Serial.print("BT: "); Serial.println(c);
+
+    if (c == '\r' || c == '\n') {
+      btBuffer.trim();
+      if (btBuffer.length() > 0) {
+        Serial.print("Received code: ");
+        Serial.println(btBuffer);
+
+        if (btBuffer == unlockCode) {
+          Serial.println("Bluetooth correct — unlocking...");
+          unlockDoor();
+        } else {
+          Serial.println("Wrong Bluetooth code");
+        }
+      }
+      btBuffer = "";
+    } else {
+      btBuffer += c;
+    }
+  }
+
+  if (!rfid.PICC_IsNewCardPresent()) return;
+  if (!rfid.PICC_ReadCardSerial()) return;
+
+  String ID = "";
+  for (byte i = 0; i < rfid.uid.size; i++) {
+    if (rfid.uid.uidByte[i] < 0x10) ID.concat(" 0");
+    else ID.concat(" ");
+    ID.concat(String(rfid.uid.uidByte[i], HEX));
+  }
+
+  ID.toUpperCase();
+  String comp = ID.substring(1);
+
+  if (comp == UID) {
+    Serial.println("RFID Authorized — unlocking...");
+    unlockDoor();
+  } else {
+    Serial.println("Wrong card!");
+  }
+
+  rfid.PICC_HaltA();
+  delay(200);
+}
+
+void unlockDoor() {
+  digitalWrite(RELAY_PIN, HIGH);
+  delay(2000);
+  digitalWrite(RELAY_PIN, LOW);
+  Serial.println("Door locked again.");
+}
